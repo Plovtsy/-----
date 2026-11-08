@@ -1,16 +1,18 @@
-"""Isolated Playwright smoke test. Never touches the user's ledger."""
+"""Isolated Playwright smoke test using a temporary PostgreSQL database."""
 import os
 import socket
 import subprocess
 import sys
-import tempfile
 import time
 import urllib.request
 from pathlib import Path
 
 root=Path(__file__).resolve().parents[1]
-with tempfile.TemporaryDirectory(prefix='kontur-browser-') as folder:
-    env=dict(os.environ,DATABASE_URL=f'sqlite:///{folder}/test.sqlite3',TINVEST_SANDBOX_TOKEN='')
+sys.path.insert(0, str(root))
+from tests.postgres import temporary_database
+
+with temporary_database() as storage:
+    env=dict(os.environ,DATABASE_URL=storage.url,TINVEST_SANDBOX_TOKEN='')
     with socket.socket() as sock:
         sock.bind(('127.0.0.1',0))
         port=sock.getsockname()[1]

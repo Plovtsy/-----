@@ -1,17 +1,16 @@
 """Sandbox proposal checks use a fake broker and never contact T-Invest."""
 import copy
-import tempfile
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
-from pathlib import Path
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from kontur import api as server
-from kontur.infrastructure.database import Account, Database, Proposal
+from kontur.infrastructure.database import Account, Proposal
 from kontur.domain.engine import demo
+from tests.postgres import temporary_database
 
 
 def amount(value, currency="rub"):
@@ -51,8 +50,8 @@ def test_proposal_is_bound_to_broker_account_and_single_command(monkeypatch):
     monkeypatch.setenv("TINVEST_SANDBOX_TOKEN", "test-only")
     monkeypatch.setenv("TINVEST_SANDBOX_ACCOUNT_ID", "dedicated")
     monkeypatch.setattr(server, "SandboxBroker", lambda: Broker(data))
-    with tempfile.TemporaryDirectory() as folder:
-        server._db = Database(f"sqlite:///{Path(folder) / 'sandbox.sqlite3'}")
+    with temporary_database() as storage:
+        server._db = storage
         try:
             with TestClient(server.app) as client:
                 request = {"account_id": "dedicated", "instrument_id": "future-uid", "data": data}

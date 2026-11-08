@@ -1,14 +1,13 @@
 import copy
 import math
 from decimal import Decimal
-import tempfile
 import unittest
 from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
 from unittest.mock import patch
 
 from kontur.domain.engine import InputError, Regime, analyze, backtest, demo, features, plan, validate
-from kontur.infrastructure.legacy_store import Ledger
+from kontur.infrastructure.database import Database
+from tests.postgres import temporary_database
 
 
 class EngineTests(unittest.TestCase):
@@ -122,44 +121,44 @@ class EngineTests(unittest.TestCase):
         with self.assertRaises(InputError):validate(raw)
 
 
-class LedgerTests(unittest.TestCase):
+class DatabaseTests(unittest.TestCase):
     def setUp(self):
-        self.folder=tempfile.TemporaryDirectory()
-        self.ledger=Ledger(Path(self.folder.name)/'test.sqlite3')
+        self.database_context=temporary_database()
+        self.database=self.database_context.__enter__()
         self.data=validate(demo())
 
-    def tearDown(self):self.folder.cleanup()
+    def tearDown(self):self.database_context.__exit__(None,None,None)
 
     def test_atomic_duplicate_execution(self):
-        p=self.ledger.propose(self.data)
+        p=self.database.propose(self.data)
         with ThreadPoolExecutor(max_workers=4) as executor:
-            results=list(executor.map(lambda _:self.ledger.execute(p['proposal_id']),range(4)))
+            results=list(executor.map(lambda _:self.database.execute(p['proposal_id']),range(4)))
         self.assertTrue(all(r==results[0] for r in results))
-        self.assertEqual(self.ledger.state()['revision'],1)
-        self.assertEqual(len(self.ledger.state()['journal']),1)
+        self.assertEqual(self.database.state()['revision'],1)
+        self.assertEqual(len(self.database.state()['journal']),1)
 
     def test_stale_revision_rejected(self):
-        first=self.ledger.propose(self.data);second=self.ledger.propose(self.data)
-        self.ledger.execute(first['proposal_id'])
-        with self.assertRaises(InputError):self.ledger.execute(second['proposal_id'])
+        first=self.database.propose(self.data);second=self.database.propose(self.data)
+        self.database.execute(first['proposal_id'])
+        with self.assertRaises(InputError):self.database.execute(second['proposal_id'])
 
     def test_expired_proposal_rejected(self):
-        with patch('kontur.infrastructure.legacy_store.time.time',return_value=1000):p=self.ledger.propose(self.data)
-        with patch('kontur.infrastructure.legacy_store.time.time',return_value=1400):
-            with self.assertRaises(InputError):self.ledger.execute(p['proposal_id'])
+        with patch('kontur.infrastructure.database.time.time',return_value=1000):p=self.database.propose(self.data)
+        with patch('kontur.infrastructure.database.time.time',return_value=1400):
+            with self.assertRaises(InputError):self.database.execute(p['proposal_id'])
 
     def test_new_snapshot_needs_reset(self):
-        self.ledger.execute(self.ledger.propose(self.data)['proposal_id'])
-        other=validate(demo('calm'));proposal=self.ledger.propose(other)
+        self.database.execute(self.database.propose(self.data)['proposal_id'])
+        other=validate(demo('calm'));proposal=self.database.propose(other)
         self.assertFalse(proposal['paper_compatible'])
-        with self.assertRaises(InputError):self.ledger.execute(proposal['proposal_id'])
-        self.ledger.reset()
-        self.ledger.execute(self.ledger.propose(other)['proposal_id'])
-        self.assertEqual(self.ledger.state()['contracts'],0)
+        with self.assertRaises(InputError):self.database.execute(proposal['proposal_id'])
+        self.database.reset()
+        self.database.execute(self.database.propose(other)['proposal_id'])
+        self.assertEqual(self.database.state()['contracts'],0)
 
     def test_commission_is_deducted_and_state_survives_restart(self):
-        proposal=self.ledger.propose(self.data);self.ledger.execute(proposal['proposal_id'])
-        again=Ledger(self.ledger.path)
+        proposal=self.database.propose(self.data);self.database.execute(proposal['proposal_id'])
+        again=Database(self.database.url)
         self.assertAlmostEqual(again.state()['cash'],float(self.data['free_cash'])-proposal['plan']['cost'])
 
 if __name__=='__main__':unittest.main()

@@ -1,21 +1,19 @@
-import os
-import tempfile
-from pathlib import Path
-
 import pytest
 from fastapi.testclient import TestClient
 
 from kontur import api as server
-from kontur.infrastructure.database import Database
+from tests.postgres import temporary_database
 
 
 @pytest.fixture
 def client():
-    with tempfile.TemporaryDirectory() as folder:
-        server._db = Database(f'sqlite:///{Path(folder) / "test.sqlite3"}')
-        with TestClient(server.app) as c:
-            yield c
-        server._db = None
+    with temporary_database() as storage:
+        server._db = storage
+        try:
+            with TestClient(server.app) as c:
+                yield c
+        finally:
+            server._db = None
 
 
 def test_full_demo_flow(client):

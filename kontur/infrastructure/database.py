@@ -1,19 +1,17 @@
-"""SQLAlchemy persistence for the local/demo and sandbox command logs."""
+"""PostgreSQL persistence for demo and Sandbox state."""
 from __future__ import annotations
 
-import json
 import os
 import time
 import uuid
 from decimal import Decimal
-from pathlib import Path
-
 from sqlalchemy import Boolean, ForeignKey, Integer, JSON, Numeric, String, create_engine, select
+from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
 from ..domain.engine import InputError, analyze
-from .legacy_store import Ledger
+from ..domain.context import snapshot_context
 
 
 class Base(DeclarativeBase):
@@ -105,11 +103,12 @@ class Checkpoint(Base):
 
 class Database:
     def __init__(self, url: str | None = None):
-        self.url = url or os.environ.get("DATABASE_URL", "sqlite:///data/mvp.sqlite3")
-        if self.url.startswith("sqlite:///"):
-            Path(self.url.removeprefix("sqlite:///")).parent.mkdir(parents=True, exist_ok=True)
+        self.url = url or os.environ.get("DATABASE_URL")
+        if not self.url:
+            raise RuntimeError("Задайте DATABASE_URL для PostgreSQL")
+        if make_url(self.url).get_backend_name() != "postgresql":
+            raise ValueError("Поддерживается только PostgreSQL")
         self.engine = create_engine(self.url, pool_pre_ping=True)
-        Base.metadata.create_all(self.engine)
 
     def account(self, db: Session, key: str, mode: str) -> Account:
         account = db.get(Account, key)
@@ -132,7 +131,7 @@ class Database:
     def propose(self, data, key="demo:local"):
         with Session(self.engine) as db:
             a = self.account(db, key, "demo")
-            context = Ledger.context(data)
+            context = snapshot_context(data)
             compatible = a.context is None or a.context == context
             effective = dict(data)
             if compatible and a.cash is not None:
@@ -214,7 +213,7 @@ class Database:
                 raise InputError("Позиция брокера не совпадает с журналом робота")
             result = analyze(data, current)
             proposal_id = str(uuid.uuid4())
-            context = Ledger.context(data)
+            context = snapshot_context(data)
             created = Decimal(str(time.time()))
             db.add(Proposal(id=proposal_id, account_key=key, created=created, revision=account.revision,
                             context=context, payload=data | {"sandbox_instrument_id": instrument_id}, result=result))

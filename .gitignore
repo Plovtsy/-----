@@ -12,8 +12,8 @@ htmlcov/
 .env
 .env.*
 !.env.example
-data/*.sqlite3*
-data/*.backup-*
+data/*
+!data/example-history.csv
 
 # Frontend and generated output
 frontend/node_modules/

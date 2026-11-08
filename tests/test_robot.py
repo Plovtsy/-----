@@ -1,17 +1,16 @@
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from decimal import Decimal
-import tempfile
 import uuid
 import json
 
 import pytest
 from sqlalchemy.orm import Session
 
-from kontur.infrastructure.database import Account, Checkpoint, Command, Database, Fill, Order
+from kontur.infrastructure.database import Account, Checkpoint, Command, Fill, Order
 from kontur.domain.engine import InputError
 from kontur.robot import Robot, preflight
 from kontur.infrastructure.broker import SandboxBroker, public
+from tests.postgres import temporary_database
 
 
 def amount(n): return {'units':n,'nano':0,'currency':'rub'}
@@ -60,8 +59,7 @@ class FakeBroker:
 
 def test_timeout_is_uncertain_and_never_retried(monkeypatch):
     monkeypatch.setenv('TINVEST_SANDBOX_ACCOUNT_ID','test')
-    with tempfile.TemporaryDirectory() as folder:
-        storage=Database(f'sqlite:///{Path(folder)/"robot.sqlite3"}')
+    with temporary_database() as storage:
         command_id=str(uuid.uuid4());data=payload()|{'command_id':command_id}
         assert storage.enqueue('sandbox:test','place_order',data,command_id)=={'id':command_id,'status':'pending'}
         assert storage.enqueue('sandbox:test','place_order',data,command_id)=={'id':command_id,'status':'pending'}
@@ -81,8 +79,7 @@ def test_timeout_is_uncertain_and_never_retried(monkeypatch):
 
 def test_reconciliation_tracks_partial_and_final_fill(monkeypatch):
     monkeypatch.setenv('TINVEST_SANDBOX_ACCOUNT_ID','test')
-    with tempfile.TemporaryDirectory() as folder:
-        storage=Database(f'sqlite:///{Path(folder)/"partial.sqlite3"}')
+    with temporary_database() as storage:
         command_id=str(uuid.uuid4());order_id=str(uuid.uuid4())
         storage.enqueue('sandbox:test','place_order',payload()|{'command_id':command_id},command_id)
         with Session(storage.engine) as db:

@@ -10,7 +10,7 @@
 flowchart LR
     U[Пользователь] --> F[React: портфель, CSV, подтверждение]
     F <--> A[FastAPI: расчёт хеджа и проверки]
-    A <--> D[(PostgreSQL в Docker<br/>SQLite при локальном запуске)]
+    A <--> D[(PostgreSQL)]
     A <-->|данные счёта и котировки| T[T-Invest Sandbox API]
     D -->|подтверждённая команда| R[Робот: сверка и заявка]
     R <-->|заявка и её статус| T
@@ -27,58 +27,41 @@ flowchart LR
 kontur/
   api.py             HTTP API и выдача интерфейса
   domain/            данные портфеля, риск, стратегия, бэктест
-  infrastructure/    база данных, старый журнал, T-Invest Sandbox
+  infrastructure/    PostgreSQL и T-Invest Sandbox
   robot.py           отдельный процесс исполнения заявок
 frontend/            исходники React-интерфейса
-scripts/             перенос журнала и проверка Sandbox
+scripts/             проверка подключения к Sandbox
 migrations/          схема базы данных (Alembic)
 tests/               проверки API, расчёта, робота и интерфейса
-data/                пример CSV и локальные базы
+data/                пример CSV
 static/              резервный интерфейс без сборки React
 ```
 
-## Запуск без токена
+## Быстрый запуск
 
 ```sh
-python3.12 -m venv .venv
-.venv/bin/pip install -r requirements-dev.txt --extra-index-url https://opensource.tbank.ru/api/v4/projects/238/packages/pypi/simple --trusted-host opensource.tbank.ru
-npm ci --prefix frontend
-npm run build --prefix frontend
-.venv/bin/python -m kontur.api
-```
-
-Откройте [http://127.0.0.1:8080](http://127.0.0.1:8080). API и страница доступны только локально. При разработке фронтенда можно запустить `npm run dev --prefix frontend` и открыть `http://127.0.0.1:5173`; Vite проксирует `/api` на локальный backend.
-
-Без `DATABASE_URL` API использует `data/mvp.sqlite3`, отдельную базу SQLAlchemy. Исходный `data/paper.sqlite3` не удаляется. Для переноса его данных в новую локальную базу выполните один раз `.venv/bin/python -m scripts.migrate_sqlite --apply-local`. Скрипт копирует SQLite, сверяет количество предложений и событий и откажется перезаписывать непустой целевой счёт. В этом рабочем каталоге перенос уже выполнен: 21 предложение и 8 событий; резервная копия лежит рядом с исходной SQLite.
-
-## Docker Compose с PostgreSQL
-
-```sh
-npm ci --prefix frontend
-npm run build --prefix frontend
 docker compose up --build -d db migrate api
 curl -f http://127.0.0.1:8080/api/ready
 ```
 
-Compose запускает PostgreSQL 16, Alembic и API на `127.0.0.1:8080`. Данные PostgreSQL в именованном томе `pgdata`. Сам frontend собирается в Docker. Реальный endpoint брокера нигде не конфигурируется.
+Откройте [http://127.0.0.1:8080](http://127.0.0.1:8080). Compose запускает PostgreSQL 16, применяет миграции Alembic, собирает интерфейс и запускает API. Данные хранятся в томе `pgdata`; API и PostgreSQL доступны только локально. Для другого порта: `KONTUR_PORT=8081 docker compose up --build -d db migrate api`.
 
-Если порт 8080 уже занят, задайте `KONTUR_PORT=8081 docker compose up --build -d db migrate api` и откройте `http://127.0.0.1:8081`. В текущем рабочем окружении приложение запущено именно на 8081.
+Токен T-Invest не нужен для демо и бэктеста. Робот Sandbox запускается отдельно.
 
-### Перенос существующего журнала в PostgreSQL
-
-Сначала создайте резервную копию и проверьте строки без записи в PostgreSQL:
+## Локальная разработка
 
 ```sh
-DATABASE_URL='postgresql+psycopg://kontur:kontur@127.0.0.1:55432/kontur' .venv/bin/python -m scripts.migrate_sqlite
+docker compose up -d db
+python3.12 -m venv .venv
+.venv/bin/pip install -r requirements-dev.txt --extra-index-url https://opensource.tbank.ru/api/v4/projects/238/packages/pypi/simple --trusted-host opensource.tbank.ru
+npm ci --prefix frontend
+npm run build --prefix frontend
+export DATABASE_URL='postgresql+psycopg://kontur:kontur@127.0.0.1:55432/kontur'
+.venv/bin/alembic upgrade head
+.venv/bin/python -m kontur.api
 ```
 
-После проверки выполните явный перенос:
-
-```sh
-DATABASE_URL='postgresql+psycopg://kontur:kontur@127.0.0.1:55432/kontur' .venv/bin/python -m scripts.migrate_sqlite --apply
-```
-
-Целевая схема создаётся командой `alembic upgrade head` в сервисе `migrate`. Скрипт делает консистентную копию исходной SQLite перед записью, импортирует счёт,  предложения и журнал, сверяет количества и не перезаписывает уже перенесённый счёт. PostgreSQL доступен только локально на порту 55432. Не монтируйте рабочую SQLite в контейнер для постоянной записи.
+При разработке интерфейса запустите `npm run dev --prefix frontend` и откройте `http://127.0.0.1:5173`; Vite проксирует `/api` на локальный backend. Реальный endpoint брокера в проекте не используется.
 
 ## T-Invest Sandbox
 
@@ -115,7 +98,7 @@ npm run build --prefix frontend
 docker compose config --quiet
 ```
 
-Браузерный тест поднимает API на временной SQLite, использует Chromium, не сбрасывает пользовательский счёт и проверяет сценарии по данным API, блокировку устаревшего расчёта, виртуальное применение, CSV, состояние без токена, экран 390/320 px и ошибки JS. Снимки сохраняются в `artifacts/`.
+Перед тестами запустите `docker compose up -d db`. Тесты создают временные базы PostgreSQL, не сбрасывая пользовательский счёт. Для другого сервера задайте `KONTUR_TEST_DATABASE_URL` с правом создания баз. Браузерная проверка использует Chromium и проверяет сценарии по данным API, блокировку устаревшего расчёта, виртуальное применение, CSV, состояние без токена, экран 390/320 px и ошибки JS. Снимки сохраняются в `artifacts/`.
 По умолчанию тест ищет браузер в `/usr/bin/chromium`; другой путь задаётся переменной `BROWSER_PATH`.
 
 ## Методика и ограничения
