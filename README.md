@@ -39,8 +39,6 @@ static/              резервный интерфейс без сборки R
 
 ## Запуск без токена
 
-Нужны Python 3.12 и Node.js 22. Все команды выполняются из `/home/recently_was_good/vs-code/robot-ai-t-bank`.
-
 ```sh
 python3.12 -m venv .venv
 .venv/bin/pip install -r requirements-dev.txt --extra-index-url https://opensource.tbank.ru/api/v4/projects/238/packages/pypi/simple --trusted-host opensource.tbank.ru
