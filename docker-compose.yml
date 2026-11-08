@@ -1,0 +1,54 @@
+services:
+  db:
+    image: postgres:16.4
+    ports:
+      - "127.0.0.1:55432:5432"
+    environment:
+      POSTGRES_DB: kontur
+      POSTGRES_USER: kontur
+      POSTGRES_PASSWORD: kontur
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kontur -d kontur"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+  migrate:
+    build: .
+    environment:
+      DATABASE_URL: postgresql+psycopg://kontur:kontur@db:5432/kontur
+    command: ["alembic","upgrade","head"]
+    depends_on:
+      db:
+        condition: service_healthy
+  api:
+    build: .
+    environment:
+      DATABASE_URL: postgresql+psycopg://kontur:kontur@db:5432/kontur
+      TINVEST_SANDBOX_TOKEN: ${TINVEST_SANDBOX_TOKEN:-}
+      TINVEST_SANDBOX_ACCOUNT_ID: ${TINVEST_SANDBOX_ACCOUNT_ID:-}
+    command: ["uvicorn","kontur.api:app","--host","0.0.0.0","--port","8080"]
+    ports:
+      - "127.0.0.1:${KONTUR_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/ready',timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+  robot:
+    build: .
+    environment:
+      DATABASE_URL: postgresql+psycopg://kontur:kontur@db:5432/kontur
+      TINVEST_SANDBOX_TOKEN: ${TINVEST_SANDBOX_TOKEN:-}
+      TINVEST_SANDBOX_ACCOUNT_ID: ${TINVEST_SANDBOX_ACCOUNT_ID:-}
+    command: ["python","-m","kontur.robot"]
+    profiles: ["sandbox"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+volumes:
+  pgdata:

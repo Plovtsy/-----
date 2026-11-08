@@ -1,0 +1,10 @@
+.venv
+frontend/node_modules
+frontend/dist
+frontend/*.tsbuildinfo
+artifacts
+data/*.sqlite3*
+data/*.backup-*
+__pycache__
+*.pyc
+.env

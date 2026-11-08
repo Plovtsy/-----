@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.venv/
+.env
+data/*.sqlite3*
+artifacts/
+frontend/node_modules/
+frontend/dist/
+frontend/*.tsbuildinfo
+data/mvp.sqlite3*
+data/*.backup-*
