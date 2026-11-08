@@ -1,7 +1,0 @@
-{
-  "version": "2.0.0",
-  "tasks": [
-    {"label": "Запустить MVP", "type": "shell", "command": "${workspaceFolder}/.venv/bin/python", "args": ["-m", "kontur.api"], "options": {"cwd": "${workspaceFolder}"}, "problemMatcher": []},
-    {"label": "Проверить MVP", "type": "shell", "command": "${workspaceFolder}/.venv/bin/python", "args": ["-m", "pytest", "-q", "tests"], "options": {"cwd": "${workspaceFolder}"}, "problemMatcher": []}
-  ]
-}

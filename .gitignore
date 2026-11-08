@@ -1,11 +1,29 @@
+# Python and local environment
 __pycache__/
-*.pyc
+*.py[cod]
 .venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Secrets and local data
 .env
+.env.*
+!.env.example
 data/*.sqlite3*
-artifacts/
+data/*.backup-*
+
+# Frontend and generated output
 frontend/node_modules/
 frontend/dist/
+frontend/coverage/
 frontend/*.tsbuildinfo
-data/mvp.sqlite3*
-data/*.backup-*
+artifacts/
+
+# Editor and operating system
+.vscode/
+.idea/
+.DS_Store
+*.log
